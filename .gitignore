@@ -2,9 +2,11 @@
 
 # dependencies
 /node_modules
+node_modules/
 
 # next.js
 /.next/
+.next/
 /out/
 
 # production
@@ -25,3 +27,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# powershell
+*.ps1
+*.psm1
+*.psd1
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

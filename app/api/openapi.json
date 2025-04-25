@@ -1,0 +1,46 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "|my.ai| API",
+    "description": "This is a simple OpenAPI 3.0 specification example.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local server"
+    }
+  ],
+  "paths": {
+    "/api/db/test": {
+      "get": {
+        "summary": "Test DB connection",
+        "description": "Returns a success message if the DB connection is available.",
+        "responses": {
+          "200": {
+            "description": "Successful DB connection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "message": "Database connection successful"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
