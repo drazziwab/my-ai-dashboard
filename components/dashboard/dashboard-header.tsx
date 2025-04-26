@@ -1,20 +1,18 @@
-import Link from "next/link"
-import { Brain } from "lucide-react"
+import type React from "react"
+import { cn } from "@/lib/utils"
 
-import { ThemeToggle } from "@/components/theme-toggle"
-import { UserNav } from "@/components/user-nav"
+interface DashboardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+  heading: string
+  text?: string
+  children?: React.ReactNode
+}
 
-export function DashboardHeader() {
+export function DashboardHeader({ heading, text, children, className, ...props }: DashboardHeaderProps) {
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
-      <Link href="/" className="flex items-center gap-2 font-semibold">
-        <Brain className="h-6 w-6" />
-        <span>LLMs Analytics</span>
-      </Link>
-      <div className="ml-auto flex items-center gap-2">
-        <ThemeToggle />
-        <UserNav />
-      </div>
-    </header>
+    <div className={cn("flex flex-col gap-1", className)} {...props}>
+      <h1 className="text-2xl font-bold tracking-tight">{heading}</h1>
+      {text && <p className="text-muted-foreground">{text}</p>}
+      {children}
+    </div>
   )
 }

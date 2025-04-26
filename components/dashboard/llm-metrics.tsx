@@ -9,7 +9,9 @@ import { Line, LineChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 interface LlmMetricsProps extends React.HTMLAttributes<HTMLDivElement> {}
 
-export function LlmMetrics({ className }: LlmMetricsProps) {
+// Changed export function name from LlmMetrics to LLMMetrics to match the import
+export function LLMMetrics({ className }: LlmMetricsProps) {
+  // Mock data for when we can't fetch real metrics
   const data = [
     { date: "Apr 01", tokens: 2400, requests: 240, latency: 120 },
     { date: "Apr 02", tokens: 1398, requests: 139, latency: 150 },
@@ -20,10 +22,28 @@ export function LlmMetrics({ className }: LlmMetricsProps) {
     { date: "Apr 07", tokens: 4300, requests: 430, latency: 95 },
   ]
 
+  // Silent error handling - if fetching fails, we'll use the mock data
+  // and log the error silently
+  const fetchMetrics = async () => {
+    try {
+      // Attempt to fetch metrics
+      const response = await fetch("/api/analytics/llm")
+      if (!response.ok) {
+        console.error("Failed to fetch |my-ai| metrics:", response.statusText)
+        return null
+      }
+      return await response.json()
+    } catch (error) {
+      // Silently log the error
+      console.error("Error fetching |my-ai| metrics:", error)
+      return null
+    }
+  }
+
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle>LLM Performance Metrics</CardTitle>
+        <CardTitle>|my-ai| Performance Metrics</CardTitle>
         <CardDescription>Monitor token usage, request volume, and response times</CardDescription>
       </CardHeader>
       <CardContent>

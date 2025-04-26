@@ -1,5 +1,7 @@
 "use client"
 
+import { DialogTrigger } from "@/components/ui/dialog"
+
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
@@ -16,11 +18,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import {
-  AlertCircle,
   Bot,
   Download,
   RefreshCw,
-  Send,
+  SendIcon,
   Settings,
   Save,
   Trash2,
@@ -33,8 +34,10 @@ import {
   Share2,
   Sparkles,
   Zap,
+  Terminal,
+  Cpu,
+  Loader2,
 } from "lucide-react"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { ChatMessage } from "@/components/chat/chat-message"
 import {
   DropdownMenu,
@@ -51,13 +54,13 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { ModelStatus } from "@/components/llm/model-status"
 
 // Types
 interface Message {
-  id: string
+  id?: string
   role: "user" | "assistant" | "system"
   content: string
   timestamp: Date
@@ -80,21 +83,26 @@ interface PromptTemplate {
   category: string
 }
 
+// Mock data for models when API fails
+const MOCK_MODELS = [
+  "llama3",
+  "llama3:8b",
+  "llama3:70b",
+  "mistral",
+  "mistral:7b",
+  "gemma:2b",
+  "gemma:7b",
+  "phi:2.7b",
+  "codellama:7b",
+  "neural-chat:7b",
+]
+
 export function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      role: "system",
-      content: "I am an AI assistant. How can I help you today?",
-      timestamp: new Date(),
-    },
-  ])
-  const [inputValue, setInputValue] = useState("")
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState("llama3")
-  const [showSettings, setShowSettings] = useState(false)
-  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [availableModels, setAvailableModels] = useState<string[]>(MOCK_MODELS)
   const [modelConfig, setModelConfig] = useState({
     temperature: 0.7,
     topP: 0.9,
@@ -134,53 +142,106 @@ export function ChatInterface() {
   const [showPromptLibrary, setShowPromptLibrary] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [fileContents, setFileContents] = useState<{ [key: string]: string }>({})
-  const [streamingEnabled, setStreamingEnabled] = useState(true)
+  const [streamingEnabled, setStreamingEnabled] = useState(false)
   const [showChatHistory, setShowChatHistory] = useState(false)
+  const [showModelStatus, setShowModelStatus] = useState(false)
+  const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434")
+  const [showCommandDialog, setShowCommandDialog] = useState(false)
+  const [commandInput, setCommandInput] = useState("")
+  const [commandOutput, setCommandOutput] = useState("")
+  const [isExecutingCommand, setIsExecutingCommand] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showSettings, setShowSettings] = useState(false)
 
-  // Fetch available models on component mount
+  // First, define the fetchAvailableModels function before the useEffect
+  const fetchAvailableModels = async () => {
+    try {
+      // Start with mock models to ensure we always have something to display
+      setAvailableModels(MOCK_MODELS)
+
+      // Attempt to fetch real models
+      const response = await fetch("/api/llm/list-models", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url: ollamaUrl }),
+      })
+
+      // Check if response is OK and is JSON
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      // Check content type to ensure we're getting JSON
+      const contentType = response.headers.get("content-type")
+      if (!contentType || !contentType.includes("application/json")) {
+        throw new Error("Response is not JSON")
+      }
+
+      const data = await response.json()
+
+      if (data.success && Array.isArray(data.models)) {
+        // Only update if we got valid data
+        const modelNames = data.models.map((model: any) => model.name || model)
+        if (modelNames.length > 0) {
+          setAvailableModels(modelNames)
+          setSelectedModel(modelNames[0])
+        }
+      } else {
+        console.error("No models returned from API")
+        // Fallback models
+        setAvailableModels(["gpt-4", "gpt-3.5-turbo", "claude-2", "llama-2-70b"])
+      }
+    } catch (error) {
+      console.error("Error fetching models:", error)
+      // Fallback models
+      setAvailableModels(["gpt-4", "gpt-3.5-turbo", "claude-2", "llama-2-70b"])
+    }
+  }
+
+  // Then update the useEffect to call this function
   useEffect(() => {
     fetchAvailableModels()
-  }, [])
+  }, [ollamaUrl])
 
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const fetchAvailableModels = async () => {
-    try {
-      const response = await fetch("/api/llm/list-models")
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      const data = await response.json()
-      if (data.success && data.models) {
-        setAvailableModels(data.models.map((model: any) => model.name))
-      }
-    } catch (error) {
-      console.error("Error fetching models:", error)
-      setError("Failed to fetch available models")
-    }
-  }
-
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) return
+    if (!input.trim()) return
 
     const userMessage: Message = {
-      id: Date.now().toString(),
       role: "user",
-      content: inputValue,
+      content: input,
       timestamp: new Date(),
     }
 
     setMessages((prev) => [...prev, userMessage])
-    setInputValue("")
+    setInput("")
     setIsLoading(true)
-    setError(null)
 
     try {
+      // Log the chat request to the database
+      try {
+        await fetch("/api/llm/log-chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: selectedModel,
+            message: input,
+            timestamp: new Date().toISOString(),
+          }),
+        })
+      } catch (error) {
+        console.error("Error logging chat:", error)
+      }
+
       // Prepare context from files if any
       let context = ""
       if (uploadedFiles.length > 0) {
@@ -189,84 +250,218 @@ export function ChatInterface() {
         })
       }
 
+      // Send the message to the API
       const response = await fetch("/api/llm/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          url: "http://localhost:11434", // This should come from settings
+          url: ollamaUrl,
           model: selectedModel,
-          message: inputValue,
+          message: input,
           systemPrompt: modelConfig.systemPrompt,
           context: context,
-          stream: streamingEnabled,
           options: {
             temperature: modelConfig.temperature,
             top_p: modelConfig.topP,
             max_tokens: modelConfig.maxTokens,
+            num_ctx: modelConfig.contextWindow, // Ollama specific
             repeat_penalty: modelConfig.repeatPenalty,
             presence_penalty: modelConfig.presencePenalty,
             frequency_penalty: modelConfig.frequencyPenalty,
             stop: modelConfig.stopSequences,
           },
+          messages: [...messages, userMessage].map(({ role, content }) => ({ role, content })),
         }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Chat request failed: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+
+      if (data.success) {
+        const assistantMessage: Message = {
+          role: "assistant",
+          content: data.response,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+      } else {
+        console.error("Chat API returned error:", data.error)
+        const errorMessage: Message = {
+          role: "assistant",
+          content: "I'm sorry, I encountered an error processing your request. Please try again.",
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, errorMessage])
+      }
+    } catch (error) {
+      console.error("Error sending message:", error)
+      const errorMessage: Message = {
+        role: "assistant",
+        content: "I'm sorry, I encountered an error processing your request. Please try again.",
+        timestamp: new Date(),
+      }
+      setMessages((prev) => [...prev, errorMessage])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCommand = async (command: string) => {
+    // Parse the command
+    const parts = command.slice(1).split(/\s+/)
+    const cmd = parts[0].toLowerCase()
+    const args = parts.slice(1)
+
+    // Handle different commands
+    switch (cmd) {
+      case "set":
+        if (args[0] === "parameter" && args.length >= 3) {
+          const paramName = args[1]
+          const paramValue = args[2]
+
+          // Handle different parameters
+          switch (paramName) {
+            case "num_ctx":
+              const ctxValue = Number.parseInt(paramValue, 10)
+              if (!isNaN(ctxValue)) {
+                setModelConfig((prev) => ({ ...prev, contextWindow: ctxValue }))
+                const systemMessage: Message = {
+                  role: "system",
+                  content: `Context window size set to ${ctxValue}`,
+                  timestamp: new Date(),
+                }
+                setMessages((prev) => [...prev, systemMessage])
+              }
+              break
+            case "temperature":
+              const tempValue = Number.parseFloat(paramValue)
+              if (!isNaN(tempValue)) {
+                setModelConfig((prev) => ({ ...prev, temperature: tempValue }))
+                const systemMessage: Message = {
+                  role: "system",
+                  content: `Temperature set to ${tempValue}`,
+                  timestamp: new Date(),
+                }
+                setMessages((prev) => [...prev, systemMessage])
+              }
+              break
+            default:
+              const systemMessage: Message = {
+                role: "system",
+                content: `Unknown parameter: ${paramName}`,
+                timestamp: new Date(),
+              }
+              setMessages((prev) => [...prev, systemMessage])
+          }
+        } else {
+          const systemMessage: Message = {
+            role: "system",
+            content: "Usage: /set parameter [param_name] [value]",
+            timestamp: new Date(),
+          }
+          setMessages((prev) => [...prev, systemMessage])
+        }
+        break
+
+      case "models":
+        await fetchAvailableModels()
+        const modelsMessage: Message = {
+          role: "system",
+          content: `Available models:\n${availableModels.join("\n")}`,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, modelsMessage])
+        break
+
+      case "status":
+        setShowModelStatus(true)
+        break
+
+      case "help":
+        const helpMessage: Message = {
+          role: "system",
+          content: `Available commands:
+/set parameter [param_name] [value] - Set a parameter value
+/models - List available models
+/status - Show model status
+/help - Show this help message
+/clear - Clear the chat history
+/url [new_url] - Change the Ollama URL`,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, helpMessage])
+        break
+
+      case "clear":
+        clearChat()
+        break
+
+      case "url":
+        if (args.length > 0) {
+          setOllamaUrl(args[0])
+          const urlMessage: Message = {
+            role: "system",
+            content: `Ollama URL set to ${args[0]}`,
+            timestamp: new Date(),
+          }
+          setMessages((prev) => [...prev, urlMessage])
+          // Refresh models with new URL
+          await fetchAvailableModels()
+        } else {
+          const urlMessage: Message = {
+            role: "system",
+            content: `Current Ollama URL: ${ollamaUrl}`,
+            timestamp: new Date(),
+          }
+          setMessages((prev) => [...prev, urlMessage])
+        }
+        break
+
+      default:
+        const unknownMessage: Message = {
+          role: "system",
+          content: `Unknown command: ${cmd}. Type /help for available commands.`,
+          timestamp: new Date(),
+        }
+        setMessages((prev) => [...prev, unknownMessage])
+    }
+  }
+
+  const executeCommand = async () => {
+    if (!commandInput.trim()) return
+
+    setIsExecutingCommand(true)
+    setCommandOutput("")
+
+    try {
+      const response = await fetch("/api/llm/execute-command", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ command: commandInput }),
       })
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      if (streamingEnabled) {
-        // Handle streaming response
-        const reader = response.body?.getReader()
-        if (!reader) throw new Error("Response body is null")
+      const data = await response.json()
 
-        // Create a placeholder for the streaming message
-        const streamingMessageId = (Date.now() + 1).toString()
-        const streamingMessage: Message = {
-          id: streamingMessageId,
-          role: "assistant",
-          content: "",
-          timestamp: new Date(),
-        }
-        setMessages((prev) => [...prev, streamingMessage])
-
-        let accumulatedContent = ""
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          // Decode the chunk and update the message
-          const chunk = new TextDecoder().decode(value)
-          accumulatedContent += chunk
-
-          setMessages((prev) =>
-            prev.map((msg) => (msg.id === streamingMessageId ? { ...msg, content: accumulatedContent } : msg)),
-          )
-        }
+      if (data.success) {
+        setCommandOutput(data.output)
       } else {
-        // Handle non-streaming response
-        const data = await response.json()
-
-        if (data.success) {
-          const assistantMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            role: "assistant",
-            content: data.response,
-            timestamp: new Date(),
-          }
-          setMessages((prev) => [...prev, assistantMessage])
-        } else {
-          throw new Error(data.error || "Failed to get response from the model")
-        }
+        throw new Error(data.error || "Failed to execute command")
       }
     } catch (error) {
-      console.error("Error sending message:", error)
-      setError((error as Error).message)
+      setCommandOutput(`Error: ${(error as Error).message}`)
     } finally {
-      setIsLoading(false)
+      setIsExecutingCommand(false)
     }
   }
 
@@ -278,14 +473,7 @@ export function ChatInterface() {
   }
 
   const clearChat = () => {
-    setMessages([
-      {
-        id: "1",
-        role: "system",
-        content: "I am an AI assistant. How can I help you today?",
-        timestamp: new Date(),
-      },
-    ])
+    setMessages([])
     setUploadedFiles([])
     setFileContents({})
   }
@@ -402,7 +590,7 @@ export function ChatInterface() {
       }
     }
 
-    setInputValue(promptText)
+    setInput(promptText)
     setShowPromptLibrary(false)
   }
 
@@ -416,7 +604,9 @@ export function ChatInterface() {
 
   return (
     <div className="grid gap-4 lg:grid-cols-4">
-      <Card className={`${showSettings || showChatHistory || showPromptLibrary ? "lg:col-span-3" : "lg:col-span-4"}`}>
+      <Card
+        className={`${showSettings || showChatHistory || showPromptLibrary || showModelStatus ? "lg:col-span-3" : "lg:col-span-4"}`}
+      >
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <div>
             <CardTitle className="flex items-center gap-2">
@@ -501,6 +691,15 @@ export function ChatInterface() {
             <Button
               variant="outline"
               size="icon"
+              onClick={() => setShowModelStatus(!showModelStatus)}
+              className={showModelStatus ? "bg-muted" : ""}
+            >
+              <Cpu className="h-4 w-4" />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
               onClick={() => setShowSettings(!showSettings)}
               className={showSettings ? "bg-muted" : ""}
             >
@@ -527,6 +726,11 @@ export function ChatInterface() {
                   <span>Export Chat</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowCommandDialog(true)}>
+                  <Terminal className="mr-2 h-4 w-4" />
+                  <span>Execute Command</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem>
                   <Copy className="mr-2 h-4 w-4" />
                   <span>Copy Last Response</span>
@@ -540,11 +744,20 @@ export function ChatInterface() {
           </div>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[60vh] pr-4">
-            <div className="space-y-4">
-              {messages.map((message) => (
-                <ChatMessage key={message.id} message={message} />
-              ))}
+          <div className="flex flex-col h-[calc(60vh-100px)] min-h-[400px]">
+            <ScrollArea className="flex-1 overflow-y-auto mb-4 space-y-4 pr-4">
+              {messages.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-center">
+                  <div className="max-w-md space-y-2">
+                    <h3 className="text-lg font-semibold">Welcome to |my-ai| Chat</h3>
+                    <p className="text-muted-foreground">
+                      Start a conversation with your |my-ai| model. Your chat history will be displayed here.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                messages.map((message, index) => <ChatMessage key={index} message={message} />)
+              )}
               {isLoading && (
                 <div className="flex items-center gap-3 rounded-lg bg-muted p-4">
                   <Avatar>
@@ -571,13 +784,6 @@ export function ChatInterface() {
                   </div>
                 </div>
               )}
-              {error && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
               {uploadedFiles.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-4">
                   {uploadedFiles.map((file) => (
@@ -597,15 +803,15 @@ export function ChatInterface() {
                 </div>
               )}
               <div ref={messagesEndRef} />
-            </div>
-          </ScrollArea>
+            </ScrollArea>
+          </div>
         </CardContent>
         <CardFooter>
           <div className="flex w-full flex-col gap-2">
             <Textarea
-              placeholder="Type your message here..."
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Type your message here... (or use / for commands)"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               className="min-h-[60px] flex-1 resize-none"
             />
@@ -617,9 +823,10 @@ export function ChatInterface() {
                     Streaming
                   </Label>
                 </div>
+                <div className="text-xs text-muted-foreground ml-4">Context: {modelConfig.contextWindow}</div>
               </div>
-              <Button onClick={handleSendMessage} disabled={isLoading || !inputValue.trim()}>
-                <Send className="h-4 w-4 mr-2" />
+              <Button onClick={handleSendMessage} disabled={isLoading || !input.trim()}>
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendIcon className="h-4 w-4 mr-2" />}
                 Send
               </Button>
             </div>
@@ -641,6 +848,17 @@ export function ChatInterface() {
               </TabsList>
               <TabsContent value="basic" className="space-y-4">
                 <div className="space-y-2">
+                  <Label htmlFor="ollamaUrl">Ollama URL</Label>
+                  <Input
+                    id="ollamaUrl"
+                    value={ollamaUrl}
+                    onChange={(e) => setOllamaUrl(e.target.value)}
+                    placeholder="http://localhost:11434"
+                  />
+                  <p className="text-xs text-muted-foreground">The URL of your Ollama instance</p>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="model-select">Model</Label>
                   <Select value={selectedModel} onValueChange={setSelectedModel}>
                     <SelectTrigger id="model-select">
@@ -658,6 +876,12 @@ export function ChatInterface() {
                       )}
                     </SelectContent>
                   </Select>
+                  <div className="flex justify-end">
+                    <Button variant="outline" size="sm" onClick={fetchAvailableModels} className="mt-1">
+                      <RefreshCw className="h-3 w-3 mr-1" />
+                      Refresh
+                    </Button>
+                  </div>
                 </div>
 
                 <Separator />
@@ -682,17 +906,19 @@ export function ChatInterface() {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="topP">Top P: {modelConfig.topP}</Label>
+                      <Label htmlFor="contextWindow">Context Window: {modelConfig.contextWindow}</Label>
                     </div>
                     <Slider
-                      id="topP"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={[modelConfig.topP]}
-                      onValueChange={(value) => setModelConfig({ ...modelConfig, topP: value[0] })}
+                      id="contextWindow"
+                      min={1024}
+                      max={32768}
+                      step={1024}
+                      value={[modelConfig.contextWindow]}
+                      onValueChange={(value) => setModelConfig({ ...modelConfig, contextWindow: value[0] })}
                     />
-                    <p className="text-xs text-muted-foreground">Controls diversity via nucleus sampling.</p>
+                    <p className="text-xs text-muted-foreground">
+                      Maximum context length (num_ctx). Larger values use more memory.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -712,6 +938,21 @@ export function ChatInterface() {
                 </div>
               </TabsContent>
               <TabsContent value="advanced" className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="topP">Top P: {modelConfig.topP}</Label>
+                  </div>
+                  <Slider
+                    id="topP"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={[modelConfig.topP]}
+                    onValueChange={(value) => setModelConfig({ ...modelConfig, topP: value[0] })}
+                  />
+                  <p className="text-xs text-muted-foreground">Controls diversity via nucleus sampling.</p>
+                </div>
+
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="repeatPenalty">Repeat Penalty: {modelConfig.repeatPenalty}</Label>
@@ -761,26 +1002,6 @@ export function ChatInterface() {
                   <p className="text-xs text-muted-foreground">
                     Penalizes tokens based on their frequency in the text.
                   </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="contextWindow">Context Window</Label>
-                  <Select
-                    value={modelConfig.contextWindow.toString()}
-                    onValueChange={(value) => setModelConfig({ ...modelConfig, contextWindow: Number.parseInt(value) })}
-                  >
-                    <SelectTrigger id="contextWindow">
-                      <SelectValue placeholder="Select context window" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="2048">2048 tokens</SelectItem>
-                      <SelectItem value="4096">4096 tokens</SelectItem>
-                      <SelectItem value="8192">8192 tokens</SelectItem>
-                      <SelectItem value="16384">16384 tokens</SelectItem>
-                      <SelectItem value="32768">32768 tokens</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">Maximum number of tokens to consider for context.</p>
                 </div>
 
                 <div className="space-y-2">
@@ -916,6 +1137,12 @@ export function ChatInterface() {
               )}
             </div>
           </CardContent>
+        </Card>
+      )}
+
+      {showModelStatus && (
+        <Card className="lg:col-span-1">
+          <ModelStatus ollamaUrl={ollamaUrl} />
         </Card>
       )}
 
@@ -1075,6 +1302,51 @@ export function ChatInterface() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={showCommandDialog} onOpenChange={setShowCommandDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Execute Ollama Command</DialogTitle>
+            <DialogDescription>Run Ollama CLI commands directly from the dashboard</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="command-input">Command</Label>
+              <Input
+                id="command-input"
+                placeholder="ollama ps"
+                value={commandInput}
+                onChange={(e) => setCommandInput(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Enter an Ollama command to execute on the server</p>
+            </div>
+            {commandOutput && (
+              <div className="space-y-2">
+                <Label>Output</Label>
+                <div className="bg-muted p-3 rounded-md font-mono text-sm whitespace-pre-wrap">{commandOutput}</div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCommandDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={executeCommand} disabled={isExecutingCommand || !commandInput.trim()}>
+              {isExecutingCommand ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Executing...
+                </>
+              ) : (
+                <>
+                  <Terminal className="mr-2 h-4 w-4" />
+                  Execute
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

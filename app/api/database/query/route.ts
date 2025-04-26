@@ -1,54 +1,64 @@
-import { NextResponse } from "next/server"
-import { executeQuery, saveQueryHistory } from "@/lib/db"
+import { type NextRequest, NextResponse } from "next/server"
+import { executeQuery } from "@/lib/db"
+import { getCurrentUser, getSessionFromCookies, logDatabaseQuery } from "@/lib/auth-service"
 
-// Specify that this route should use the Node.js runtime
 export const runtime = "nodejs"
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { query } = await request.json()
+    // Get the current user from the session
+    const sessionId = getSessionFromCookies()
+    if (!sessionId) {
+      return NextResponse.json({ success: false, message: "Authentication required" }, { status: 401 })
+    }
+
+    const user = await getCurrentUser(sessionId)
+    if (!user) {
+      return NextResponse.json({ success: false, message: "Invalid or expired session" }, { status: 401 })
+    }
+
+    const { query, params = [] } = await request.json()
 
     if (!query) {
+      return NextResponse.json({ success: false, message: "Query is required" }, { status: 400 })
+    }
+
+    // Start timing
+    const startTime = Date.now()
+
+    try {
+      const result = await executeQuery(query, params)
+
+      // Calculate duration
+      const duration = Date.now() - startTime
+
+      // Log the successful query
+      await logDatabaseQuery(user.user_id, query, duration, result.length || 0, "success")
+
+      return NextResponse.json({
+        success: true,
+        data: result,
+        rowCount: result.length,
+        executionTime: duration,
+      })
+    } catch (error) {
+      // Calculate duration
+      const duration = Date.now() - startTime
+
+      // Log the failed query
+      await logDatabaseQuery(user.user_id, query, duration, 0, "error", (error as Error).message)
+
       return NextResponse.json(
         {
           success: false,
-          error: "Query is required",
+          message: (error as Error).message,
+          query,
         },
-        { status: 400 },
+        { status: 500 },
       )
     }
-
-    const startTime = Date.now()
-    const result = await executeQuery(query)
-    const duration = Date.now() - startTime
-
-    // Save query to history
-    await saveQueryHistory(query, "success", duration, result.length)
-
-    return NextResponse.json({
-      success: true,
-      result,
-      metadata: {
-        rowCount: result.length,
-        duration,
-      },
-    })
   } catch (error) {
-    console.error("Failed to execute query:", error)
-
-    // Save failed query to history
-    try {
-      await saveQueryHistory((error as any).query || "Unknown query", "error", 0, 0)
-    } catch (saveError) {
-      console.error("Failed to save query history:", saveError)
-    }
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: (error as Error).message,
-      },
-      { status: 500 },
-    )
+    console.error("Error in database query API:", error)
+    return NextResponse.json({ success: false, message: (error as Error).message }, { status: 500 })
   }
 }

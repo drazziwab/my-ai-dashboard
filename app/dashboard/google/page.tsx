@@ -1,11 +1,23 @@
+import type { Metadata } from "next"
 import { GoogleIntegration } from "@/components/google/google-integration"
+import { DashboardShell } from "@/components/dashboard/dashboard-shell"
+import { DashboardHeader } from "@/components/dashboard/dashboard-header"
+
+export const metadata: Metadata = {
+  title: "Google Integration",
+  description: "Connect your Google services to |my-ai|",
+}
 
 export default function GooglePage() {
   return (
-    <div className="flex flex-col gap-4 p-4 md:gap-8 md:p-8">
-      <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-1">
+    <DashboardShell>
+      <DashboardHeader
+        heading="Google Integration"
+        text="Connect your Google services to enhance your |my-ai| experience"
+      />
+      <div className="grid gap-4">
         <GoogleIntegration />
       </div>
-    </div>
+    </DashboardShell>
   )
 }

@@ -12,16 +12,18 @@ import { AlertCircle, CheckCircle2, Database, ExternalLink, RefreshCw } from "lu
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import Link from "next/link"
 
 export function DatabaseSettings() {
   const [isConnecting, setIsConnecting] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<null | { success: boolean; message: string }>(null)
+  const [isLocalHost, setIsLocalHost] = useState(true)
   const [formData, setFormData] = useState({
-    server: "CASH",
-    database: "master",
-    username: "placeholder",
-    password: "placeholder",
+    server: process.env.DB_SERVER || "CASH",
+    database: process.env.DB_NAME || "LLM_APP",
+    username: process.env.DB_USER || "anything",
+    password: process.env.DB_PASSWORD || "09041986",
     encrypt: true,
     trustServerCertificate: true,
   })
@@ -32,6 +34,26 @@ export function DatabaseSettings() {
       ...formData,
       [name]: type === "checkbox" ? checked : value,
     })
+  }
+
+  const toggleHostType = () => {
+    const newIsLocalHost = !isLocalHost
+    setIsLocalHost(newIsLocalHost)
+
+    // Update server based on host type
+    if (newIsLocalHost) {
+      setFormData({
+        ...formData,
+        server: "CASH", // Local server
+      })
+    } else {
+      setFormData({
+        ...formData,
+        server: "your-cloud-server.database.windows.net",
+        encrypt: true,
+        trustServerCertificate: false, // Usually false for cloud servers
+      })
+    }
   }
 
   const testConnection = async () => {
@@ -109,6 +131,18 @@ export function DatabaseSettings() {
           <CardDescription>Configure your MSSQL database connection settings</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="flex items-center space-x-2 mb-6">
+            <div className="flex flex-col space-y-1">
+              <div className="flex items-center space-x-2">
+                <Switch id="host-toggle" checked={isLocalHost} onCheckedChange={toggleHostType} />
+                <Label htmlFor="host-toggle">{isLocalHost ? "Local Host" : "Cloud Host"}</Label>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {isLocalHost ? "Connect to a local SQL Server instance" : "Connect to a cloud-hosted SQL Server"}
+              </span>
+            </div>
+          </div>
+
           <Tabs defaultValue="connection">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="connection">Connection</TabsTrigger>
@@ -121,7 +155,7 @@ export function DatabaseSettings() {
                   <Input
                     id="server"
                     name="server"
-                    placeholder="localhost"
+                    placeholder={isLocalHost ? "localhost" : "your-server.database.windows.net"}
                     value={formData.server}
                     onChange={handleInputChange}
                   />

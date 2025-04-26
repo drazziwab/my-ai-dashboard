@@ -10,10 +10,19 @@ import { Textarea } from "@/components/ui/textarea"
 import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { AlertCircle, BrainCircuit, CheckCircle2, Download, ExternalLink, RefreshCw } from "lucide-react"
+import { AlertCircle, BrainCircuit, CheckCircle2, Download, ExternalLink, RefreshCw, Terminal } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
 import Link from "next/link"
+import { ModelStatus } from "@/components/llm/model-status"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 // Types for Ollama models
 interface OllamaModel {
@@ -40,6 +49,7 @@ export function LlmSettings() {
     topP: 0.9,
     topK: 40,
     maxTokens: 2048,
+    contextWindow: 4096,
     systemPrompt: "You are a helpful AI assistant.",
   })
 
@@ -47,6 +57,12 @@ export function LlmSettings() {
   const [modelToDownload, setModelToDownload] = useState("llama3")
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(0)
+
+  // Command execution
+  const [showCommandDialog, setShowCommandDialog] = useState(false)
+  const [commandInput, setCommandInput] = useState("ollama ps")
+  const [commandOutput, setCommandOutput] = useState("")
+  const [isExecutingCommand, setIsExecutingCommand] = useState(false)
 
   const testConnection = async () => {
     setIsConnecting(true)
@@ -167,7 +183,10 @@ export function LlmSettings() {
         body: JSON.stringify({
           url: ollamaUrl,
           model: selectedModel,
-          config: modelConfig,
+          config: {
+            ...modelConfig,
+            num_ctx: modelConfig.contextWindow, // Ollama specific
+          },
         }),
       })
 
@@ -192,6 +211,39 @@ export function LlmSettings() {
     }
   }
 
+  const executeCommand = async () => {
+    if (!commandInput.trim()) return
+
+    setIsExecutingCommand(true)
+    setCommandOutput("")
+
+    try {
+      const response = await fetch("/api/llm/execute-command", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ command: commandInput }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      if (data.success) {
+        setCommandOutput(data.output)
+      } else {
+        throw new Error(data.error || "Failed to execute command")
+      }
+    } catch (error) {
+      setCommandOutput(`Error: ${(error as Error).message}`)
+    } finally {
+      setIsExecutingCommand(false)
+    }
+  }
+
   // Fetch models on initial load if URL is set
   useEffect(() => {
     if (ollamaUrl) {
@@ -209,9 +261,10 @@ export function LlmSettings() {
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="connection">Connection</TabsTrigger>
               <TabsTrigger value="models">Models</TabsTrigger>
+              <TabsTrigger value="status">Status</TabsTrigger>
               <TabsTrigger value="config">Configuration</TabsTrigger>
             </TabsList>
 
@@ -241,7 +294,12 @@ export function LlmSettings() {
                 </Alert>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-between">
+                <Button variant="outline" onClick={() => setShowCommandDialog(true)}>
+                  <Terminal className="mr-2 h-4 w-4" />
+                  Execute Command
+                </Button>
+
                 <Button onClick={testConnection} disabled={isConnecting}>
                   {isConnecting ? (
                     <>
@@ -421,6 +479,10 @@ export function LlmSettings() {
               </div>
             </TabsContent>
 
+            <TabsContent value="status" className="space-y-4 pt-4">
+              <ModelStatus ollamaUrl={ollamaUrl} />
+            </TabsContent>
+
             <TabsContent value="config" className="space-y-4 pt-4">
               {selectedModel ? (
                 <>
@@ -482,6 +544,23 @@ export function LlmSettings() {
 
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
+                        <Label htmlFor="contextWindow">Context Window (num_ctx): {modelConfig.contextWindow}</Label>
+                      </div>
+                      <Slider
+                        id="contextWindow"
+                        min={1024}
+                        max={32768}
+                        step={1024}
+                        value={[modelConfig.contextWindow]}
+                        onValueChange={(value) => setModelConfig({ ...modelConfig, contextWindow: value[0] })}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Maximum context length. Larger values use more memory.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
                         <Label htmlFor="maxTokens">Max Tokens: {modelConfig.maxTokens}</Label>
                       </div>
                       <Slider
@@ -532,6 +611,51 @@ export function LlmSettings() {
           </Tabs>
         </CardContent>
       </Card>
+
+      <Dialog open={showCommandDialog} onOpenChange={setShowCommandDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Execute Ollama Command</DialogTitle>
+            <DialogDescription>Run Ollama CLI commands directly from the dashboard</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="command-input">Command</Label>
+              <Input
+                id="command-input"
+                placeholder="ollama ps"
+                value={commandInput}
+                onChange={(e) => setCommandInput(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Enter an Ollama command to execute on the server</p>
+            </div>
+            {commandOutput && (
+              <div className="space-y-2">
+                <Label>Output</Label>
+                <div className="bg-muted p-3 rounded-md font-mono text-sm whitespace-pre-wrap">{commandOutput}</div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCommandDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={executeCommand} disabled={isExecutingCommand || !commandInput.trim()}>
+              {isExecutingCommand ? (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  Executing...
+                </>
+              ) : (
+                <>
+                  <Terminal className="mr-2 h-4 w-4" />
+                  Execute
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

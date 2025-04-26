@@ -1,361 +1,184 @@
 "use client"
 
 import { useState } from "react"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { format } from "date-fns"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { MoreHorizontal, Plus } from "lucide-react"
 
-type Task = {
+interface Task {
   id: string
-  title: string
-  description: string
-  status: "todo" | "in-progress" | "completed"
+  name: string
+  status: "todo" | "in-progress" | "done"
   priority: "low" | "medium" | "high"
-  dueDate: Date
+  dueDate: string
   assignee: string
 }
 
-const mockTasks: Task[] = [
+const tasks: Task[] = [
   {
-    id: "1",
-    title: "Implement database connection",
-    description: "Connect to the SQL Server database and set up the ORM",
-    status: "completed",
-    priority: "high",
-    dueDate: new Date(2023, 5, 15),
-    assignee: "John Doe",
-  },
-  {
-    id: "2",
-    title: "Create dashboard UI",
-    description: "Design and implement the main dashboard interface",
+    id: "task-1",
+    name: "Implement database query builder",
     status: "in-progress",
-    priority: "medium",
-    dueDate: new Date(2023, 5, 20),
-    assignee: "Jane Smith",
-  },
-  {
-    id: "3",
-    title: "Implement authentication",
-    description: "Set up user authentication and authorization",
-    status: "todo",
     priority: "high",
-    dueDate: new Date(2023, 5, 25),
+    dueDate: "2023-12-15",
     assignee: "John Doe",
   },
   {
-    id: "4",
-    title: "Add data visualization",
-    description: "Implement charts and graphs for data visualization",
+    id: "task-2",
+    name: "Create model fine-tuning UI",
     status: "todo",
     priority: "medium",
-    dueDate: new Date(2023, 6, 1),
+    dueDate: "2023-12-20",
     assignee: "Jane Smith",
   },
   {
-    id: "5",
-    title: "Write documentation",
-    description: "Create comprehensive documentation for the project",
+    id: "task-3",
+    name: "Add data visualization tools",
+    status: "todo",
+    priority: "medium",
+    dueDate: "2023-12-25",
+    assignee: "John Doe",
+  },
+  {
+    id: "task-4",
+    name: "Implement user management",
     status: "todo",
     priority: "low",
-    dueDate: new Date(2023, 6, 10),
+    dueDate: "2024-01-05",
+    assignee: "Jane Smith",
+  },
+  {
+    id: "task-5",
+    name: "Add API key management",
+    status: "todo",
+    priority: "high",
+    dueDate: "2023-12-18",
     assignee: "John Doe",
   },
 ]
 
 export function TaskList() {
-  const [tasks, setTasks] = useState<Task[]>(mockTasks)
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [isEditMode, setIsEditMode] = useState(false)
-  const [newTask, setNewTask] = useState<Partial<Task>>({
-    title: "",
-    description: "",
-    status: "todo",
-    priority: "medium",
-    dueDate: new Date(),
-    assignee: "",
-  })
+  const [selectedTasks, setSelectedTasks] = useState<string[]>([])
 
-  const handleTaskClick = (task: Task) => {
-    setSelectedTask(task)
-    setIsDialogOpen(true)
-    setIsEditMode(false)
+  const toggleTask = (taskId: string) => {
+    setSelectedTasks((prev) => (prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId]))
   }
 
-  const handleAddNewTask = () => {
-    setSelectedTask(null)
-    setNewTask({
-      title: "",
-      description: "",
-      status: "todo",
-      priority: "medium",
-      dueDate: new Date(),
-      assignee: "",
-    })
-    setIsDialogOpen(true)
-    setIsEditMode(true)
+  const toggleAllTasks = () => {
+    setSelectedTasks((prev) => (prev.length === tasks.length ? [] : tasks.map((task) => task.id)))
   }
 
-  const handleEditTask = () => {
-    if (selectedTask) {
-      setNewTask(selectedTask)
-      setIsEditMode(true)
-    }
-  }
-
-  const handleSaveTask = () => {
-    if (isEditMode) {
-      if (selectedTask) {
-        // Edit existing task
-        setTasks(tasks.map((task) => (task.id === selectedTask.id ? { ...task, ...newTask } : task)))
-      } else {
-        // Add new task
-        const task: Task = {
-          id: Math.random().toString(36).substr(2, 9),
-          title: newTask.title || "",
-          description: newTask.description || "",
-          status: (newTask.status as "todo" | "in-progress" | "completed") || "todo",
-          priority: (newTask.priority as "low" | "medium" | "high") || "medium",
-          dueDate: newTask.dueDate || new Date(),
-          assignee: newTask.assignee || "",
-        }
-        setTasks([...tasks, task])
-      }
-    }
-    setIsDialogOpen(false)
-  }
-
-  const handleDeleteTask = () => {
-    if (selectedTask) {
-      setTasks(tasks.filter((task) => task.id !== selectedTask.id))
-      setIsDialogOpen(false)
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case "high":
+        return "text-red-500"
+      case "medium":
+        return "text-yellow-500"
+      case "low":
+        return "text-green-500"
+      default:
+        return ""
     }
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "todo":
-        return "bg-gray-200 text-gray-800"
+      case "done":
+        return "bg-green-100 text-green-800 dark:bg-green-800/20 dark:text-green-400"
       case "in-progress":
-        return "bg-blue-200 text-blue-800"
-      case "completed":
-        return "bg-green-200 text-green-800"
+        return "bg-blue-100 text-blue-800 dark:bg-blue-800/20 dark:text-blue-400"
+      case "todo":
+        return "bg-gray-100 text-gray-800 dark:bg-gray-800/20 dark:text-gray-400"
       default:
-        return "bg-gray-200 text-gray-800"
-    }
-  }
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "low":
-        return "bg-gray-200 text-gray-800"
-      case "medium":
-        return "bg-yellow-200 text-yellow-800"
-      case "high":
-        return "bg-red-200 text-red-800"
-      default:
-        return "bg-gray-200 text-gray-800"
+        return ""
     }
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold">Tasks</h2>
-        <Button onClick={handleAddNewTask}>Add Task</Button>
+    <div className="w-full">
+      <div className="flex items-center justify-between pb-4">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm">
+            <Plus className="mr-2 h-4 w-4" />
+            Add Task
+          </Button>
+        </div>
       </div>
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[100px]">Status</TableHead>
-              <TableHead>Title</TableHead>
+              <TableHead className="w-12">
+                <Checkbox
+                  checked={selectedTasks.length === tasks.length}
+                  onCheckedChange={toggleAllTasks}
+                  aria-label="Select all tasks"
+                />
+              </TableHead>
+              <TableHead>Task</TableHead>
+              <TableHead className="hidden md:table-cell">Status</TableHead>
               <TableHead className="hidden md:table-cell">Priority</TableHead>
               <TableHead className="hidden md:table-cell">Due Date</TableHead>
               <TableHead className="hidden md:table-cell">Assignee</TableHead>
+              <TableHead className="w-12"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {tasks.map((task) => (
-              <TableRow
-                key={task.id}
-                className="cursor-pointer hover:bg-muted/50"
-                onClick={() => handleTaskClick(task)}
-              >
-                <TableCell>
-                  <Badge className={getStatusColor(task.status)}>
-                    {task.status === "in-progress"
-                      ? "In Progress"
-                      : task.status.charAt(0).toUpperCase() + task.status.slice(1)}
-                  </Badge>
+              <TableRow key={task.id} className="cursor-pointer hover:bg-muted/50" onClick={() => toggleTask(task.id)}>
+                <TableCell className="w-12">
+                  <Checkbox
+                    checked={selectedTasks.includes(task.id)}
+                    onCheckedChange={() => toggleTask(task.id)}
+                    aria-label={`Select ${task.name}`}
+                    onClick={(e) => e.stopPropagation()}
+                  />
                 </TableCell>
-                <TableCell className="font-medium">{task.title}</TableCell>
+                <TableCell className="font-medium">{task.name}</TableCell>
                 <TableCell className="hidden md:table-cell">
-                  <Badge className={getPriorityColor(task.priority)}>
-                    {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
-                  </Badge>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${getStatusColor(
+                      task.status,
+                    )}`}
+                  >
+                    {task.status}
+                  </span>
                 </TableCell>
-                <TableCell className="hidden md:table-cell">{format(task.dueDate, "MMM dd, yyyy")}</TableCell>
+                <TableCell className={`hidden md:table-cell ${getPriorityColor(task.priority)}`}>
+                  {task.priority}
+                </TableCell>
+                <TableCell className="hidden md:table-cell">{task.dueDate}</TableCell>
                 <TableCell className="hidden md:table-cell">{task.assignee}</TableCell>
+                <TableCell className="w-12">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="icon">
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">Open menu</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                      <DropdownMenuItem>Edit</DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem>Delete</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
-
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>{isEditMode ? (selectedTask ? "Edit Task" : "Add New Task") : "Task Details"}</DialogTitle>
-            <DialogDescription>
-              {isEditMode ? "Make changes to the task here." : "View task details."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            {isEditMode ? (
-              <>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="title" className="text-right">
-                    Title
-                  </Label>
-                  <Input
-                    id="title"
-                    value={newTask.title}
-                    onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                    className="col-span-3"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="description" className="text-right">
-                    Description
-                  </Label>
-                  <Input
-                    id="description"
-                    value={newTask.description}
-                    onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                    className="col-span-3"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="status" className="text-right">
-                    Status
-                  </Label>
-                  <Select
-                    value={newTask.status}
-                    onValueChange={(value) =>
-                      setNewTask({ ...newTask, status: value as "todo" | "in-progress" | "completed" })
-                    }
-                  >
-                    <SelectTrigger className="col-span-3">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todo">To Do</SelectItem>
-                      <SelectItem value="in-progress">In Progress</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="priority" className="text-right">
-                    Priority
-                  </Label>
-                  <Select
-                    value={newTask.priority}
-                    onValueChange={(value) => setNewTask({ ...newTask, priority: value as "low" | "medium" | "high" })}
-                  >
-                    <SelectTrigger className="col-span-3">
-                      <SelectValue placeholder="Select priority" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="assignee" className="text-right">
-                    Assignee
-                  </Label>
-                  <Input
-                    id="assignee"
-                    value={newTask.assignee}
-                    onChange={(e) => setNewTask({ ...newTask, assignee: e.target.value })}
-                    className="col-span-3"
-                  />
-                </div>
-              </>
-            ) : (
-              selectedTask && (
-                <>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <span className="text-right font-medium">Title:</span>
-                    <span className="col-span-3">{selectedTask.title}</span>
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <span className="text-right font-medium">Description:</span>
-                    <span className="col-span-3">{selectedTask.description}</span>
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <span className="text-right font-medium">Status:</span>
-                    <Badge className={`col-span-3 ${getStatusColor(selectedTask.status)}`}>
-                      {selectedTask.status === "in-progress"
-                        ? "In Progress"
-                        : selectedTask.status.charAt(0).toUpperCase() + selectedTask.status.slice(1)}
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <span className="text-right font-medium">Priority:</span>
-                    <Badge className={`col-span-3 ${getPriorityColor(selectedTask.priority)}`}>
-                      {selectedTask.priority.charAt(0).toUpperCase() + selectedTask.priority.slice(1)}
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <span className="text-right font-medium">Due Date:</span>
-                    <span className="col-span-3">{format(selectedTask.dueDate, "MMMM dd, yyyy")}</span>
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <span className="text-right font-medium">Assignee:</span>
-                    <span className="col-span-3">{selectedTask.assignee}</span>
-                  </div>
-                </>
-              )
-            )}
-          </div>
-          <DialogFooter>
-            {isEditMode ? (
-              <>
-                <Button type="submit" onClick={handleSaveTask}>
-                  Save
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button variant="outline" onClick={handleEditTask}>
-                  Edit
-                </Button>
-                <Button variant="destructive" onClick={handleDeleteTask}>
-                  Delete
-                </Button>
-              </>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

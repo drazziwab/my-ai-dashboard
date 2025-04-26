@@ -1,145 +1,273 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { RefreshCw, Search, Table, Plus } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { AlertCircle, Loader2, Plus, RefreshCw, Table } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
-interface GoogleSheetsProps {
-  userEmail: string
+interface Spreadsheet {
+  id: string
+  name: string
+  url: string
+  lastModified: string
 }
 
-export function GoogleSheets({ userEmail }: GoogleSheetsProps) {
-  const [loading, setLoading] = useState(true)
-  const [spreadsheets, setSpreadsheets] = useState<any[]>([])
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedSheet, setSelectedSheet] = useState<string | null>(null)
+interface GoogleSheetsProps {
+  isConnected: boolean
+}
+
+export function GoogleSheets({ isConnected }: GoogleSheetsProps) {
+  const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showCreateSheet, setShowCreateSheet] = useState(false)
+  const [newSheet, setNewSheet] = useState({
+    title: "",
+    rows: 20,
+    columns: 10,
+  })
+  const [creatingSheet, setCreatingSheet] = useState(false)
 
   useEffect(() => {
-    fetchSpreadsheets()
-  }, [])
+    if (isConnected) {
+      fetchSpreadsheets()
+    }
+  }, [isConnected])
 
   const fetchSpreadsheets = async () => {
-    setLoading(true)
+    if (!isConnected) return
+
+    setIsLoading(true)
+    setError(null)
+
     try {
-      // In a real app, this would fetch spreadsheets from the Google Sheets API
-      // For now, we'll just simulate it with mock data
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const response = await fetch("/api/google/sheets/list")
 
-      const mockSpreadsheets = [
-        {
-          id: "sheet-1",
-          name: "Budget 2025",
-          lastModified: "2025-04-24T14:32:12.000Z",
-          url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT",
-        },
-        {
-          id: "sheet-2",
-          name: "Project Timeline",
-          lastModified: "2025-04-22T12:18:45.000Z",
-          url: "https://docs.google.com/spreadsheets/d/e/2PACX-2vT",
-        },
-        {
-          id: "sheet-3",
-          name: "Sales Data Q1 2025",
-          lastModified: "2025-04-15T10:05:32.000Z",
-          url: "https://docs.google.com/spreadsheets/d/e/2PACX-3vT",
-        },
-        {
-          id: "sheet-4",
-          name: "Team Performance Metrics",
-          lastModified: "2025-04-10T16:45:22.000Z",
-          url: "https://docs.google.com/spreadsheets/d/e/2PACX-4vT",
-        },
-        {
-          id: "sheet-5",
-          name: "Inventory Tracking",
-          lastModified: "2025-03-28T14:12:08.000Z",
-          url: "https://docs.google.com/spreadsheets/d/e/2PACX-5vT",
-        },
-      ]
-
-      setSpreadsheets(mockSpreadsheets)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setSpreadsheets(data.spreadsheets || [])
+        } else {
+          setError(data.error || "Failed to fetch spreadsheets")
+        }
+      } else {
+        setError("Failed to fetch spreadsheets")
+      }
     } catch (error) {
       console.error("Error fetching spreadsheets:", error)
+      setError("An error occurred while fetching spreadsheets")
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  // Filter spreadsheets based on search term
-  const filteredSpreadsheets = spreadsheets.filter((sheet) =>
-    sheet.name.toLowerCase().includes(searchTerm.toLowerCase()),
-  )
+  const handleCreateSpreadsheet = async () => {
+    if (!isConnected || !newSheet.title) return
+
+    setCreatingSheet(true)
+    setError(null)
+
+    try {
+      const response = await fetch("/api/google/sheets/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: newSheet.title,
+          rows: newSheet.rows,
+          columns: newSheet.columns,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          // Reset form and close dialog
+          setNewSheet({
+            title: "",
+            rows: 20,
+            columns: 10,
+          })
+          setShowCreateSheet(false)
+
+          // Refresh spreadsheets
+          fetchSpreadsheets()
+        } else {
+          setError(data.error || "Failed to create spreadsheet")
+        }
+      } else {
+        setError("Failed to create spreadsheet")
+      }
+    } catch (error) {
+      console.error("Error creating spreadsheet:", error)
+      setError("An error occurred while creating the spreadsheet")
+    } finally {
+      setCreatingSheet(false)
+    }
+  }
+
+  if (!isConnected) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Google Sheets Integration</CardTitle>
+          <CardDescription>Connect your Google Sheets to create and manage spreadsheets</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Not Connected</AlertTitle>
+            <AlertDescription>
+              You need to connect your Google Sheets first. Go to the Overview tab and connect Sheets.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search spreadsheets..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-8"
-          />
-        </div>
-        <Button variant="outline" onClick={fetchSpreadsheets} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          <span className="sr-only">Refresh</span>
-        </Button>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          New Spreadsheet
-        </Button>
-      </div>
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {loading ? (
-          <div className="col-span-full flex justify-center py-8">
-            <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Google Sheets</CardTitle>
+              <CardDescription>Create and manage your Google Sheets</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={fetchSpreadsheets} disabled={isLoading}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <Dialog open={showCreateSheet} onOpenChange={setShowCreateSheet}>
+                <DialogTrigger asChild>
+                  <Button size="sm">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Spreadsheet
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create New Spreadsheet</DialogTitle>
+                    <DialogDescription>Create a new Google Sheet with specified dimensions</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="sheet-title">Spreadsheet Title</Label>
+                      <Input
+                        id="sheet-title"
+                        value={newSheet.title}
+                        onChange={(e) => setNewSheet({ ...newSheet, title: e.target.value })}
+                        placeholder="Sales Data 2025"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="sheet-rows">Rows</Label>
+                        <Input
+                          id="sheet-rows"
+                          type="number"
+                          min="1"
+                          max="1000"
+                          value={newSheet.rows}
+                          onChange={(e) => setNewSheet({ ...newSheet, rows: Number.parseInt(e.target.value) || 20 })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="sheet-columns">Columns</Label>
+                        <Input
+                          id="sheet-columns"
+                          type="number"
+                          min="1"
+                          max="26"
+                          value={newSheet.columns}
+                          onChange={(e) => setNewSheet({ ...newSheet, columns: Number.parseInt(e.target.value) || 10 })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowCreateSheet(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleCreateSpreadsheet} disabled={creatingSheet || !newSheet.title}>
+                      {creatingSheet ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        "Create Spreadsheet"
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
-        ) : (
-          <>
-            {filteredSpreadsheets.length === 0 ? (
-              <div className="col-span-full flex flex-col items-center justify-center py-8 text-center">
-                <p className="text-muted-foreground">No spreadsheets found</p>
-              </div>
-            ) : (
-              filteredSpreadsheets.map((sheet) => (
-                <Card
-                  key={sheet.id}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => setSelectedSheet(sheet.id)}
-                >
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : spreadsheets.length > 0 ? (
+            <div className="space-y-2">
+              {spreadsheets.map((sheet) => (
+                <Card key={sheet.id} className="overflow-hidden">
                   <CardContent className="p-4">
-                    <div className="flex items-start gap-3">
-                      <Table className="h-8 w-8 text-green-500" />
-                      <div>
-                        <div className="font-medium">{sheet.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          Last modified: {new Date(sheet.lastModified).toLocaleString()}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <Table className="h-5 w-5 mr-2 text-green-500" />
+                        <div>
+                          <a
+                            href={sheet.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium hover:underline"
+                          >
+                            {sheet.name}
+                          </a>
+                          <div className="text-xs text-muted-foreground">Last modified: {sheet.lastModified}</div>
                         </div>
                       </div>
+                      <Button variant="outline" size="sm" asChild>
+                        <a href={sheet.url} target="_blank" rel="noopener noreferrer">
+                          Open
+                        </a>
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
-              ))
-            )}
-          </>
-        )}
-      </div>
-
-      <Card>
-        <CardContent className="p-4">
-          <iframe
-            src="https://docs.google.com/spreadsheets/d/e/2PACX-1vT/preview"
-            width="100%"
-            height="500"
-            frameBorder="0"
-            title="Google Sheets Embed"
-          ></iframe>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              No spreadsheets found. Try refreshing or creating a new spreadsheet.
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

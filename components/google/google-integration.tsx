@@ -1,138 +1,241 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Calendar, Mail, FileText, Table } from "lucide-react"
 import { GoogleAuth } from "@/components/google/google-auth"
-import { GoogleCalendar } from "@/components/google/google-calendar"
 import { GoogleMail } from "@/components/google/google-mail"
+import { GoogleCalendar } from "@/components/google/google-calendar"
 import { GoogleDocs } from "@/components/google/google-docs"
 import { GoogleSheets } from "@/components/google/google-sheets"
+import { AlertCircle, CheckCircle, Mail, Calendar, FileText, Table } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+
+interface GoogleService {
+  id: string
+  name: string
+  description: string
+  icon: React.ReactNode
+  scopes: string[]
+  isConnected: boolean
+}
 
 export function GoogleIntegration() {
+  const [activeTab, setActiveTab] = useState("overview")
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [isAuthenticating, setIsAuthenticating] = useState(false)
-  const [authError, setAuthError] = useState<string | null>(null)
-  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  // Check authentication status on component mount
+  const [services, setServices] = useState<GoogleService[]>([
+    {
+      id: "gmail",
+      name: "Gmail",
+      description: "Access and manage your emails",
+      icon: <Mail className="h-5 w-5" />,
+      scopes: ["https://www.googleapis.com/auth/gmail.readonly", "https://www.googleapis.com/auth/gmail.send"],
+      isConnected: false,
+    },
+    {
+      id: "calendar",
+      name: "Calendar",
+      description: "View and manage your calendar events",
+      icon: <Calendar className="h-5 w-5" />,
+      scopes: ["https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/calendar.events"],
+      isConnected: false,
+    },
+    {
+      id: "docs",
+      name: "Docs",
+      description: "Create and edit Google Docs",
+      icon: <FileText className="h-5 w-5" />,
+      scopes: ["https://www.googleapis.com/auth/documents", "https://www.googleapis.com/auth/drive.file"],
+      isConnected: false,
+    },
+    {
+      id: "sheets",
+      name: "Sheets",
+      description: "Create and edit Google Sheets",
+      icon: <Table className="h-5 w-5" />,
+      scopes: ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive.file"],
+      isConnected: false,
+    },
+  ])
+
   useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        setIsLoading(true)
+        const response = await fetch("/api/google/auth-status")
+        if (response.ok) {
+          const data = await response.json()
+          setIsAuthenticated(data.isAuthenticated)
+
+          if (data.connectedServices) {
+            setServices((prev) =>
+              prev.map((service) => ({
+                ...service,
+                isConnected: data.connectedServices.includes(service.id),
+              })),
+            )
+          }
+        } else {
+          console.error("Failed to check auth status:", response.statusText)
+        }
+      } catch (error) {
+        console.error("Error checking auth status:", error)
+        setError("Failed to check authentication status")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
     checkAuthStatus()
   }, [])
 
-  const checkAuthStatus = async () => {
-    // In a real app, this would check if the user is authenticated with Google
-    // For now, we'll just simulate it
-    const mockAuthStatus = localStorage.getItem("googleAuthStatus")
-    const mockUserEmail = localStorage.getItem("googleUserEmail")
-
-    if (mockAuthStatus === "authenticated" && mockUserEmail) {
-      setIsAuthenticated(true)
-      setUserEmail(mockUserEmail)
-    } else {
-      setIsAuthenticated(false)
-      setUserEmail(null)
-    }
-  }
-
-  const handleAuthenticate = async (email: string) => {
-    setIsAuthenticating(true)
-    setAuthError(null)
-
+  const handleConnect = async (serviceId: string) => {
     try {
-      // In a real app, this would authenticate with Google
-      // For now, we'll just simulate it
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const service = services.find((s) => s.id === serviceId)
+      if (!service) return
 
-      // Store auth status in localStorage for demo purposes
-      localStorage.setItem("googleAuthStatus", "authenticated")
-      localStorage.setItem("googleUserEmail", email)
+      const response = await fetch("/api/google/connect-service", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          serviceId,
+          scopes: service.scopes,
+        }),
+      })
 
-      setIsAuthenticated(true)
-      setUserEmail(email)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setServices((prev) => prev.map((s) => (s.id === serviceId ? { ...s, isConnected: true } : s)))
+        } else {
+          setError(data.error || "Failed to connect service")
+        }
+      } else {
+        setError("Failed to connect service")
+      }
     } catch (error) {
-      setAuthError((error as Error).message)
-    } finally {
-      setIsAuthenticating(false)
+      console.error("Error connecting service:", error)
+      setError("An error occurred while connecting the service")
     }
   }
 
-  const handleSignOut = async () => {
-    // In a real app, this would sign out from Google
-    // For now, we'll just simulate it
-    localStorage.removeItem("googleAuthStatus")
-    localStorage.removeItem("googleUserEmail")
+  const handleDisconnect = async (serviceId: string) => {
+    try {
+      const response = await fetch("/api/google/disconnect-service", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ serviceId }),
+      })
 
-    setIsAuthenticated(false)
-    setUserEmail(null)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setServices((prev) => prev.map((s) => (s.id === serviceId ? { ...s, isConnected: false } : s)))
+        } else {
+          setError(data.error || "Failed to disconnect service")
+        }
+      } else {
+        setError("Failed to disconnect service")
+      }
+    } catch (error) {
+      console.error("Error disconnecting service:", error)
+      setError("An error occurred while disconnecting the service")
+    }
   }
 
   return (
-    <div className="space-y-4">
-      {!isAuthenticated ? (
-        <GoogleAuth onAuthenticate={handleAuthenticate} isAuthenticating={isAuthenticating} error={authError} />
-      ) : (
-        <>
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col space-y-2 md:flex-row md:items-center md:justify-between md:space-y-0">
-                <div>
-                  <CardTitle>Google Integration</CardTitle>
-                  <CardDescription>Access your Google services</CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="text-sm">
-                    Signed in as <span className="font-medium">{userEmail}</span>
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <TabsList className="mb-4">
+        <TabsTrigger value="overview">Overview</TabsTrigger>
+        <TabsTrigger value="gmail">Gmail</TabsTrigger>
+        <TabsTrigger value="calendar">Calendar</TabsTrigger>
+        <TabsTrigger value="docs">Docs</TabsTrigger>
+        <TabsTrigger value="sheets">Sheets</TabsTrigger>
+      </TabsList>
+
+      {error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <TabsContent value="overview">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
+          {services.map((service) => (
+            <Card key={service.id} className="overflow-hidden">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    {service.icon}
+                    <CardTitle>{service.name}</CardTitle>
                   </div>
-                  <Button variant="outline" size="sm" onClick={handleSignOut}>
-                    Sign Out
-                  </Button>
+                  {service.isConnected ? <CheckCircle className="h-5 w-5 text-green-500" /> : null}
                 </div>
-              </div>
+                <CardDescription>{service.description}</CardDescription>
+              </CardHeader>
+              <CardContent className="pb-2">
+                <div className="text-sm">
+                  Status:{" "}
+                  <span className={service.isConnected ? "text-green-500" : "text-yellow-500"}>
+                    {service.isConnected ? "Connected" : "Not Connected"}
+                  </span>
+                </div>
+              </CardContent>
+              <CardFooter>
+                {service.isConnected ? (
+                  <Button variant="outline" size="sm" onClick={() => handleDisconnect(service.id)}>
+                    Disconnect
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => handleConnect(service.id)} disabled={!isAuthenticated}>
+                    Connect
+                  </Button>
+                )}
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+
+        {!isAuthenticated && (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle>Google Authentication</CardTitle>
+              <CardDescription>Authenticate with Google to use these services</CardDescription>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="mail">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="mail" className="flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
-                    Gmail
-                  </TabsTrigger>
-                  <TabsTrigger value="calendar" className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4" />
-                    Calendar
-                  </TabsTrigger>
-                  <TabsTrigger value="docs" className="flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Docs
-                  </TabsTrigger>
-                  <TabsTrigger value="sheets" className="flex items-center gap-2">
-                    <Table className="h-4 w-4" />
-                    Sheets
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="mail" className="mt-4">
-                  <GoogleMail userEmail={userEmail!} />
-                </TabsContent>
-
-                <TabsContent value="calendar" className="mt-4">
-                  <GoogleCalendar userEmail={userEmail!} />
-                </TabsContent>
-
-                <TabsContent value="docs" className="mt-4">
-                  <GoogleDocs userEmail={userEmail!} />
-                </TabsContent>
-
-                <TabsContent value="sheets" className="mt-4">
-                  <GoogleSheets userEmail={userEmail!} />
-                </TabsContent>
-              </Tabs>
+              <GoogleAuth onAuthSuccess={() => setIsAuthenticated(true)} onAuthError={(error) => setError(error)} />
             </CardContent>
           </Card>
-        </>
-      )}
-    </div>
+        )}
+      </TabsContent>
+
+      <TabsContent value="gmail">
+        <GoogleMail isConnected={services.find((s) => s.id === "gmail")?.isConnected || false} />
+      </TabsContent>
+
+      <TabsContent value="calendar">
+        <GoogleCalendar isConnected={services.find((s) => s.id === "calendar")?.isConnected || false} />
+      </TabsContent>
+
+      <TabsContent value="docs">
+        <GoogleDocs isConnected={services.find((s) => s.id === "docs")?.isConnected || false} />
+      </TabsContent>
+
+      <TabsContent value="sheets">
+        <GoogleSheets isConnected={services.find((s) => s.id === "sheets")?.isConnected || false} />
+      </TabsContent>
+    </Tabs>
   )
 }
