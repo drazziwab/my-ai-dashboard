@@ -3,18 +3,8 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DatabaseMetrics } from "@/components/dashboard/database-metrics"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Line, LineChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from "recharts"
 
 export default function DatabaseMetricsPage() {
-  const queryData = [
-    { time: "00:00", queries: 1200, latency: 42 },
-    { time: "04:00", queries: 800, latency: 38 },
-    { time: "08:00", queries: 2400, latency: 45 },
-    { time: "12:00", queries: 3800, latency: 52 },
-    { time: "16:00", queries: 3200, latency: 48 },
-    { time: "20:00", queries: 2100, latency: 44 },
-  ]
-
   return (
     <DashboardShell>
       <DashboardHeader heading="Database Metrics" text="Monitor your database performance and resource utilization." />
@@ -27,31 +17,8 @@ export default function DatabaseMetricsPage() {
             <CardDescription>Database query volume and latency over time</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={queryData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis dataKey="time" tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} />
-                  <YAxis tickLine={false} axisLine={false} orientation="right" />
-                  <Line
-                    type="monotone"
-                    dataKey="queries"
-                    stroke="hsl(var(--chart-1))"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 6 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="latency"
-                    stroke="hsl(var(--chart-2))"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+            <div className="h-[300px] flex items-center justify-center bg-muted/20 rounded-md">
+              <p className="text-muted-foreground">Query performance chart loading...</p>
             </div>
           </CardContent>
         </Card>
