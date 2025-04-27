@@ -24,7 +24,11 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+<<<<<<< HEAD
 next-env.d.ts
 
 # custom - swagger-ui folder inside public
 /public/swagger-ui/
+=======
+next-env.d.ts
+>>>>>>> fc767a355f4694e50e023f8cb630b1e0c2891b08
